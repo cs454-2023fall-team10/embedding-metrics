@@ -77,10 +77,12 @@ def run_conversation(graph, intent):
     system_prompt = [
         {
             "role": "system",
-            "content": """
+            "content": f"""
 You are a chatbot assistant.
+The user visited the website of a company "채널톡", which is a Korean IT startup.
 Your goal is to navigate the user through the chatbot by choosing the right node to follow based on the user's intent.
-The user visited the Careers page of the website of the company "채널톡", which is a Korean IT startup.
+Try not to summon human agents if possible, but you can do so if you are stuck.
+The chatbot's name is {graph.name}, which can be helpful to know when navigating the chatbot.
 """,
         }
     ]
@@ -165,4 +167,3 @@ if __name__ == "__main__":
     chatbot_graph = parse_from_file("chatbot-dataset/examples/jobs-homepage.json")
 
     run_conversation(chatbot_graph, intent="채널톡 백엔드 개발자로 지원하고 싶은데 어디에서 해야하지?")
-    run_conversation(chatbot_graph, intent="아니 채널톡이라는 듣보잡 회사가 있잖아? 뭐하는 회사야?")
