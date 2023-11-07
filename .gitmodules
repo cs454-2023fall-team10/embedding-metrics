@@ -1,0 +1,6 @@
+[submodule "chatbot-dataset"]
+	path = chatbot-dataset
+	url = https://github.com/cs454-2023fall-team10/chatbot-dataset
+[submodule "vector_embedding"]
+	path = vector_embedding
+	url = https://github.com/cs454-2023fall-team10/vector_embedding
