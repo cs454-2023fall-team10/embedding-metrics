@@ -27,7 +27,7 @@ Express your intent in Korean, in **one** sentence.
     assistant_prompt = [
         {
             "role": "user",
-            "content": f"Hello, I am chatbot {name}. How can I help you?",
+            "content": graph.root().text(),
         }
     ]
     messages.extend(assistant_prompt)
