@@ -17,24 +17,6 @@ def prompt_from_current_node(graph, node):
         {
             "type": "function",
             "function": {
-                "name": "move_to_node",
-                "description": "Navigate to another node of the chatbot based on its label",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "node": {
-                            "type": "string",
-                            "description": "The label of the node to navigate to",
-                            "enum": edge_labels,
-                        }
-                    },
-                    "required": ["node"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
                 "name": "exit",
                 "description": "You are either satisfied or frustrated with the chatbot and want to exit",
                 "parameters": {
@@ -55,6 +37,28 @@ def prompt_from_current_node(graph, node):
             },
         },
     ]
+
+    if len(edges) > 0:
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": "move_to_node",
+                    "description": "Navigate to another node of the chatbot based on its label",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "node": {
+                                "type": "string",
+                                "description": "The label of the node to navigate to",
+                                "enum": edge_labels,
+                            }
+                        },
+                        "required": ["node"],
+                    },
+                },
+            },
+        )
 
     return {
         "messages": messages,
@@ -102,9 +106,6 @@ The chatbot's name is {graph.name}, which can be helpful to know when navigating
         # If there are no edges, then we have reached a leaf node
         # and the conversation is over
         edges = graph.edges_of(current_node)
-        if len(edges) == 0:
-            print("- User summoned a human agent (Reached leaf node)")
-            break
 
         # 3. Prompt from current node
         prompt = prompt_from_current_node(graph, current_node)
@@ -123,6 +124,9 @@ The chatbot's name is {graph.name}, which can be helpful to know when navigating
         # 5. Parse response
         response_message = response.choices[0].message
         tool_calls = response_message.tool_calls
+
+        messages.append(response_message)
+
         if tool_calls:
             tool_call = tool_calls[0]
             function_name = tool_call.function.name
@@ -140,9 +144,18 @@ The chatbot's name is {graph.name}, which can be helpful to know when navigating
                         break
 
                 if edge is None:
-                    raise Exception("Edge not found")
+                    print(f"ERROR: No edge with label {function_args['node']}")
+                    break
 
                 current_node = graph.node(edge.to_id)
+                messages.append(
+                    {
+                        "tool_call_id": tool_call.id,
+                        "role": "tool",
+                        "name": function_name,
+                        "content": edge.text(),
+                    },
+                )
 
             elif function_name == "exit":
                 print("- User exited the chatbot")
@@ -151,19 +164,40 @@ The chatbot's name is {graph.name}, which can be helpful to know when navigating
                 print("- User summoned a human agent")
                 break
         else:
+            print(f"ERROR: No tool call in response, response: {response}")
             break
 
     print("End of conversation.")
     print()
 
 
+def usage():
+    print(
+        "Usage: python3 evalute.py <chatbot-filename> <intent-filename> <num-conversations>"
+    )
+    exit(1)
+
+
 if __name__ == "__main__":
+    import random
     import sys
+
+    if len(sys.argv) != 4:
+        usage()
+
+    chatbot_filename = sys.argv[1]
+    intent_filename = sys.argv[2]
+    num_conversations = int(sys.argv[3])
 
     sys.path.append("chatbot-dataset")
 
     from chatbot import parse_from_file
 
-    chatbot_graph = parse_from_file("chatbot-dataset/examples/jobs-homepage.json")
+    chatbot_graph = parse_from_file(chatbot_filename)
 
-    run_conversation(chatbot_graph, intent="채널톡 백엔드 개발자로 지원하고 싶은데 어디에서 해야하지?")
+    with open(intent_filename, "r") as f:
+        intents = f.readlines()
+        random.shuffle(intents)
+        for i in range(num_conversations):
+            intent = intents[i].strip()
+            run_conversation(chatbot_graph, intent)
