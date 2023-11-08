@@ -72,6 +72,8 @@ def run_conversation(graph, intent):
 
     openai_client = openai.OpenAI()
 
+    path = []
+
     current_node = graph.root()
     messages = []
 
@@ -86,7 +88,7 @@ You are a chatbot assistant.
 The user visited the website of a company "채널톡", which is a Korean IT startup.
 Your goal is to navigate the user through the chatbot by choosing the right node to follow based on the user's intent.
 You must prompt the user with a function call to move to the next node.
-Try not to summon human agents if possible, but you can do so if you are stuck.
+Try **not** to summon human agents if possible. You can exit if the user seems satisfied.
 """,
         }
     ]
@@ -102,6 +104,7 @@ Try not to summon human agents if possible, but you can do so if you are stuck.
 
     while path_length < 10:
         path_length += 1
+        path.append(current_node.id)
 
         # If there are no edges, then we have reached a leaf node
         # and the conversation is over
@@ -145,6 +148,7 @@ Try not to summon human agents if possible, but you can do so if you are stuck.
 
                 if edge is None:
                     print(f"ERROR: No edge with label {function_args['node']}")
+                    path.append("error")
                     break
 
                 current_node = graph.node(edge.to_id)
@@ -159,21 +163,25 @@ Try not to summon human agents if possible, but you can do so if you are stuck.
 
             elif function_name == "exit":
                 print("- User exited the chatbot")
+                path.append("exit")
                 break
             elif function_name == "summon":
                 print("- User summoned a human agent")
+                path.append("summon")
                 break
         else:
             print(f"ERROR: No tool call in response, response: {response}")
+            path.append("error")
             break
 
     print("End of conversation.")
     print()
+    return path
 
 
 def usage():
     print(
-        "Usage: python3 evalute.py <chatbot-filename> <intent-filename> <num-conversations>"
+        "Usage: python3 evalute.py <chatbot-filename> <intent-filename> <num-conversations> <out-filename>"
     )
     exit(1)
 
@@ -182,12 +190,13 @@ if __name__ == "__main__":
     import random
     import sys
 
-    if len(sys.argv) != 4:
+    if len(sys.argv) != 5:
         usage()
 
     chatbot_filename = sys.argv[1]
     intent_filename = sys.argv[2]
     num_conversations = int(sys.argv[3])
+    out_filename = sys.argv[4]
 
     sys.path.append("chatbot-dataset")
 
@@ -195,9 +204,14 @@ if __name__ == "__main__":
 
     chatbot_graph = parse_from_file(chatbot_filename)
 
-    with open(intent_filename, "r") as f:
-        intents = f.readlines()
-        random.shuffle(intents)
-        for i in range(num_conversations):
-            intent = intents[i].strip()
-            run_conversation(chatbot_graph, intent)
+    with open(out_filename, "a") as out:
+        with open(intent_filename, "r") as f:
+            intents = f.readlines()
+            random.shuffle(intents)
+            for i in range(num_conversations):
+                intent = intents[i].strip()
+                path = run_conversation(chatbot_graph, intent)
+
+                # Write result to file
+                out.write(f"{intent}\t{path}\n")
+                out.flush()
