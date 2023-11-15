@@ -66,7 +66,16 @@ def prompt_from_current_node(graph, node):
     }
 
 
-def ask_response(openai_client, graph, messages, current_node, tools, path, retries=0):
+def ask_response(
+    openai_client,
+    graph,
+    messages,
+    current_node,
+    tools,
+    path,
+    retries=0,
+    allow_summon=True,
+):
     import json
 
     if retries > 3:
@@ -74,9 +83,14 @@ def ask_response(openai_client, graph, messages, current_node, tools, path, retr
         path.append("error")
         return None, path, messages, False
 
+    if not allow_summon:
+        tools = [tool for tool in tools if tool["function"]["name"] != "summon"]
+        tools = [tool for tool in tools if tool["function"]["name"] != "exit"]
+
     # Generate response
     response = openai_client.chat.completions.create(
-        model="gpt-4-1106-preview",
+        # model="gpt-4-1106-preview",
+        model="gpt-3.5-turbo-1106",
         messages=messages,
         tools=tools,
     )
@@ -166,6 +180,7 @@ def run_conversation(graph, intent):
     path = []
 
     current_node = graph.root()
+    path.append(current_node.id)
     messages = []
 
     print("Starting conversation...")
@@ -191,12 +206,7 @@ Try **not** to summon human agents if possible. You can exit if the user seems s
 
     print(f"- User's intent: {intent_prompt['messages'][0]['content']}")
 
-    path_length = 0
-
-    while path_length < 10:
-        path_length += 1
-        path.append(current_node.id)
-
+    while len(path) < 10:
         # 3. Prompt from current node
         prompt = prompt_from_current_node(graph, current_node)
         messages.extend(prompt["messages"])
@@ -204,6 +214,7 @@ Try **not** to summon human agents if possible. You can exit if the user seems s
         # TODO: might use tool_choice with node type to forbid summon() calls
 
         print(f"- Chatbot's prompt: {prompt['messages'][0]['content']}")
+        print(f"- Choices: {[edge.text() for edge in graph.edges_of(current_node)]}")
 
         # 4. Generate response
         current_node, path, messages, should_continue = ask_response(
@@ -224,19 +235,15 @@ Try **not** to summon human agents if possible. You can exit if the user seems s
 
 
 def run_single_prompt(graph, intent):
-    import random
     import openai
 
     openai_client = openai.OpenAI()
     messages = []
 
-    # Choose a random starting point
-    # node = None
-    # while node is None or len(graph.edges_of(node)) == 0:
-    #     node = random.choice(graph.vertices())
-
-    # Choose root node
-    node = graph.root()
+    # Choose a random starting point with more than 2 edges
+    nodes = graph.vertices()
+    nodes = [node for node in nodes if len(graph.edges_of(node)) >= 2]
+    node = random.choice(nodes)
 
     # 1. System prompt
     system_prompt = [
@@ -259,6 +266,7 @@ Try **not** to summon human agents if possible. You can exit if the user seems s
     tools = prompt["tools"]
 
     print(f"- Chatbot's prompt: {prompt['messages'][0]['content']}")
+    print(f"- Choices: {[edge.text() for edge in graph.edges_of(node)]}")
 
     # 3. Collect intent from user
     intent_prompt = intent_prompt_from_user(intent)
@@ -274,6 +282,7 @@ Try **not** to summon human agents if possible. You can exit if the user seems s
         tools=tools,
         current_node=node,
         path=[node.id],
+        allow_summon=False,
     )
 
     return path
@@ -287,6 +296,7 @@ def usage():
 
 
 if __name__ == "__main__":
+    import json
     import random
     import sys
 
@@ -298,21 +308,56 @@ if __name__ == "__main__":
     num_conversations = int(sys.argv[3])
     out_filename = sys.argv[4]
 
+    # Save log to a separate file to avoid losing progress when the program crashes
+    out_filename_log = out_filename + ".log"
+    out_filename_json = out_filename + ".json"
+
     sys.path.append("chatbot-dataset")
 
     from chatbot import parse_from_file
 
     chatbot_graph = parse_from_file(chatbot_filename)
 
-    with open(out_filename, "a") as out:
+    with open(out_filename_log, "a") as out:
         with open(intent_filename, "r") as f:
             intents = f.readlines()
             random.shuffle(intents)
             for i in range(num_conversations):
                 intent = intents[i].strip()
-                # path = run_conversation(chatbot_graph, intent)
                 [start, choice] = run_single_prompt(chatbot_graph, intent)
 
-                # Write result to file
-                out.write(f"{intent}\t{start}\t{choice}\n")
+                # Write result to log file
+                prompt = chatbot_graph.node(start).text()
+                choices = [
+                    {"text": edge.text(), "nextSectionId": edge.to_id}
+                    for edge in chatbot_graph.edges_of(start)
+                ]
+                choices_map = {
+                    edge.to_id: {"text": edge.text(), "nextSectionId": edge.to_id}
+                    for edge in chatbot_graph.edges_of(start)
+                }
+
+                log = json.dumps(
+                    {
+                        "intent": intent,
+                        "prompt": prompt,
+                        "choices": choices,
+                        "choice": choices_map[choice],
+                    },
+                    ensure_ascii=False,
+                )
+                out.write(f"{log}\n")
                 out.flush()
+
+    # Write result to output file
+    out_json = []
+    with open(out_filename_log, "r") as f:
+        for line in f.readlines():
+            out_json.append(json.loads(line.strip()))
+
+    with open(out_filename_json, "w") as f:
+        json.dump(out_json, f, ensure_ascii=False, indent=2)
+
+    print(
+        f"Saved result to {out_filename_json}, {out_filename_log}. Generated {len(out_json)} conversations."
+    )
