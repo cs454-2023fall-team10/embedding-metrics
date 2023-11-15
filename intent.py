@@ -34,7 +34,7 @@ Express your intent in Korean, in **one** sentence.
 
     # 3. Get user input
     response = openai_client.chat.completions.create(
-        model="gpt-3.5-turbo-1106",
+        model="gpt-4-1106-preview",
         messages=messages,
     )
 

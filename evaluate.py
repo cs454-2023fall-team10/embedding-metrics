@@ -119,7 +119,7 @@ Try **not** to summon human agents if possible. You can exit if the user seems s
 
         # 4. Generate response
         response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo-1106",
+            model="gpt-4-1106-preview",
             messages=messages,
             tools=tools,
         )
