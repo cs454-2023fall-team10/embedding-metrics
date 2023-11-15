@@ -66,6 +66,100 @@ def prompt_from_current_node(graph, node):
     }
 
 
+def ask_response(openai_client, graph, messages, current_node, tools, path, retries=0):
+    import json
+
+    if retries > 3:
+        print("ERROR: Too many retries")
+        path.append("error")
+        return None, path, messages, False
+
+    # debug
+    print(messages, tools, retries)
+
+    # Generate response
+    response = openai_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=messages,
+        tools=tools,
+    )
+
+    # Parse response
+    response_message = response.choices[0].message
+    tool_calls = response_message.tool_calls
+
+    messages.append(response_message)
+
+    if tool_calls:
+        tool_call = tool_calls[0]
+        function_name = tool_call.function.name
+        function_args = json.loads(tool_call.function.arguments)
+
+        if function_name == "move_to_node":
+            print(f"- User selects {function_args['node']}")
+
+            # 6. Navigate to next node
+            edges = graph.edges_of(current_node)
+            edge = None
+            for _edge in edges:
+                if _edge.text() == function_args["node"]:
+                    edge = _edge
+                    break
+
+            if edge is None:
+                # Add error message
+                print(f"ERROR: No edge with label {function_args['node']}")
+                messages.append(
+                    {
+                        "tool_call_id": tool_call.id,
+                        "role": "tool",
+                        "name": function_name,
+                        "content": f"ERROR: No edge with label {function_args['node']}",
+                    }
+                )
+
+                return ask_response(
+                    openai_client,
+                    graph,
+                    messages,
+                    current_node,
+                    tools,
+                    path,
+                    retries + 1,
+                )
+            else:
+                current_node = graph.node(edge.to_id)
+                messages.append(
+                    {
+                        "tool_call_id": tool_call.id,
+                        "role": "tool",
+                        "name": function_name,
+                        "content": edge.text(),
+                    },
+                )
+                return current_node, path, messages, True
+
+        elif function_name == "exit":
+            print("- User exited the chatbot")
+            path.append("exit")
+            return None, path, messages, False
+        elif function_name == "summon":
+            print("- User summoned a human agent")
+            path.append("summon")
+            return None, path, messages, False
+    else:
+        print(f"ERROR: No tool call in response, response: {response}")
+        messages.append(
+            {
+                "role": "system",
+                "content": "ERROR: You cannot use arbitrary response.",
+            }
+        )
+        return ask_response(
+            openai_client, graph, messages, current_node, tools, path, retries + 1
+        )
+
+
 def run_conversation(graph, intent):
     import json
     import openai
@@ -87,7 +181,7 @@ def run_conversation(graph, intent):
 You are a chatbot assistant.
 The user visited the website of a company "채널톡", which is a Korean IT startup.
 Your goal is to navigate the user through the chatbot by choosing the right node to follow based on the user's intent.
-You must prompt the user with a function call to move to the next node.
+Don't answer with arbitrary response; you must answer only with the nodes of the chatbot, summoning human agents, or exit.
 Try **not** to summon human agents if possible. You can exit if the user seems satisfied.
 """,
         }
@@ -114,64 +208,21 @@ Try **not** to summon human agents if possible. You can exit if the user seems s
         prompt = prompt_from_current_node(graph, current_node)
         messages.extend(prompt["messages"])
         tools = prompt["tools"]
+        # TODO: might use tool_choice with node type to forbid summon() calls
 
         print(f"- Chatbot's prompt: {prompt['messages'][0]['content']}")
 
         # 4. Generate response
-        response = openai_client.chat.completions.create(
-            model="gpt-4-1106-preview",
+        current_node, messages, path, should_continue = ask_response(
+            openai_client=openai_client,
+            graph=graph,
             messages=messages,
             tools=tools,
+            current_node=current_node,
+            path=path,
         )
 
-        # 5. Parse response
-        response_message = response.choices[0].message
-        tool_calls = response_message.tool_calls
-
-        messages.append(response_message)
-
-        if tool_calls:
-            tool_call = tool_calls[0]
-            function_name = tool_call.function.name
-            function_args = json.loads(tool_call.function.arguments)
-
-            if function_name == "move_to_node":
-                print(f"- User selects {function_args['node']}")
-
-                # 6. Navigate to next node
-                edges = graph.edges_of(current_node)
-                edge = None
-                for _edge in edges:
-                    if _edge.text() == function_args["node"]:
-                        edge = _edge
-                        break
-
-                if edge is None:
-                    print(f"ERROR: No edge with label {function_args['node']}")
-                    path.append("error")
-                    break
-
-                current_node = graph.node(edge.to_id)
-                messages.append(
-                    {
-                        "tool_call_id": tool_call.id,
-                        "role": "tool",
-                        "name": function_name,
-                        "content": edge.text(),
-                    },
-                )
-
-            elif function_name == "exit":
-                print("- User exited the chatbot")
-                path.append("exit")
-                break
-            elif function_name == "summon":
-                print("- User summoned a human agent")
-                path.append("summon")
-                break
-        else:
-            print(f"ERROR: No tool call in response, response: {response}")
-            path.append("error")
+        if not should_continue:
             break
 
     print("End of conversation.")
