@@ -74,12 +74,9 @@ def ask_response(openai_client, graph, messages, current_node, tools, path, retr
         path.append("error")
         return None, path, messages, False
 
-    # debug
-    print(messages, tools, retries)
-
     # Generate response
     response = openai_client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4-1106-preview",
         messages=messages,
         tools=tools,
     )
@@ -137,6 +134,7 @@ def ask_response(openai_client, graph, messages, current_node, tools, path, retr
                         "content": edge.text(),
                     },
                 )
+                path.append(current_node.id)
                 return current_node, path, messages, True
 
         elif function_name == "exit":
@@ -161,7 +159,6 @@ def ask_response(openai_client, graph, messages, current_node, tools, path, retr
 
 
 def run_conversation(graph, intent):
-    import json
     import openai
 
     openai_client = openai.OpenAI()
@@ -200,10 +197,6 @@ Try **not** to summon human agents if possible. You can exit if the user seems s
         path_length += 1
         path.append(current_node.id)
 
-        # If there are no edges, then we have reached a leaf node
-        # and the conversation is over
-        edges = graph.edges_of(current_node)
-
         # 3. Prompt from current node
         prompt = prompt_from_current_node(graph, current_node)
         messages.extend(prompt["messages"])
@@ -213,7 +206,7 @@ Try **not** to summon human agents if possible. You can exit if the user seems s
         print(f"- Chatbot's prompt: {prompt['messages'][0]['content']}")
 
         # 4. Generate response
-        current_node, messages, path, should_continue = ask_response(
+        current_node, path, messages, should_continue = ask_response(
             openai_client=openai_client,
             graph=graph,
             messages=messages,
@@ -227,6 +220,62 @@ Try **not** to summon human agents if possible. You can exit if the user seems s
 
     print("End of conversation.")
     print()
+    return path
+
+
+def run_single_prompt(graph, intent):
+    import random
+    import openai
+
+    openai_client = openai.OpenAI()
+    messages = []
+
+    # Choose a random starting point
+    # node = None
+    # while node is None or len(graph.edges_of(node)) == 0:
+    #     node = random.choice(graph.vertices())
+
+    # Choose root node
+    node = graph.root()
+
+    # 1. System prompt
+    system_prompt = [
+        {
+            "role": "system",
+            "content": f"""
+You are a chatbot assistant.
+The user visited the website of a company "채널톡", which is a Korean IT startup.
+Your goal is to navigate the user through the chatbot by choosing the right node to follow based on the user's intent.
+Don't answer with arbitrary response; you must answer only with the nodes of the chatbot, summoning human agents, or exit.
+Try **not** to summon human agents if possible. You can exit if the user seems satisfied.
+""",
+        }
+    ]
+    messages.extend(system_prompt)
+
+    # 2. Prompt from current node
+    prompt = prompt_from_current_node(graph, node)
+    messages.extend(prompt["messages"])
+    tools = prompt["tools"]
+
+    print(f"- Chatbot's prompt: {prompt['messages'][0]['content']}")
+
+    # 3. Collect intent from user
+    intent_prompt = intent_prompt_from_user(intent)
+    messages.extend(intent_prompt["messages"])
+
+    print(f"- User's intent: {intent_prompt['messages'][0]['content']}")
+
+    # 4. Generate response
+    _, path, _, _ = ask_response(
+        openai_client=openai_client,
+        graph=graph,
+        messages=messages,
+        tools=tools,
+        current_node=node,
+        path=[node.id],
+    )
+
     return path
 
 
@@ -261,8 +310,9 @@ if __name__ == "__main__":
             random.shuffle(intents)
             for i in range(num_conversations):
                 intent = intents[i].strip()
-                path = run_conversation(chatbot_graph, intent)
+                # path = run_conversation(chatbot_graph, intent)
+                [start, choice] = run_single_prompt(chatbot_graph, intent)
 
                 # Write result to file
-                out.write(f"{intent}\t{path}\n")
+                out.write(f"{intent}\t{start}\t{choice}\n")
                 out.flush()
