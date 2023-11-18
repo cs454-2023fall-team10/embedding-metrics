@@ -97,14 +97,34 @@ class LabeledData:
     def __repr__(self):
         return str(self)
 
-    def cross_entropy_loss(self, evaluator):
-        # Caculate softmax(similarity(intent, choice)) for each choice
-        # Then calculate cross entropy loss
+    def cross_entropy_loss(self, evaluator, print_details=False):
         similarity = [
             evaluator.safe_similarity(self.intent, choice) for choice in self.choices
         ]
         softmax_similarity = softmax(similarity)
-        return -np.log(softmax_similarity[self.label])
+        loss = -np.log(softmax_similarity[self.label])
+        
+        if print_details:
+            print(self.intent, self.choices, similarity, self.label, loss)
+            
+        return loss
+    
+    def cosine_similarity_loss(self, evaluator, print_details=False):
+        similarity = [
+            evaluator.safe_similarity(self.intent, choice) for choice in self.choices
+        ]
+        
+        loss = 0
+        for i, sim in enumerate(similarity):
+            if i == self.label:
+                loss += 1 - sim
+            else:
+                loss += sim
+        
+        if print_details:
+            print(self.intent, self.choices, similarity, self.label, loss)
+        
+        return loss
 
 
 def load_label_data(filename):
@@ -131,15 +151,15 @@ if __name__ == "__main__":
 
     evaluators = [
         RandomEvaluator(),
-        FastTextEvaluator("./models/cc.ko.300.bin"),
-        # PororoEvaluator(),
+        # FastTextEvaluator("./vector_embedding/fasttext/models/cc.ko.300.bin"),
+        PororoEvaluator(),
         # SentenceBertEvaluator("jhgan/ko-sroberta-multitask"),
     ]
 
-    # Calculate cross entropy loss
+    # Calculate loss
     for evaluator in evaluators:
         loss = 0
-        for item in data:
-            loss += item.cross_entropy_loss(evaluator)
+        for i, item in enumerate(data):
+            loss += item.cross_entropy_loss(evaluator, print_details=i % 10 == 0)
 
-        print(f"Cross entropy loss for {evaluator.name()}: {loss}")
+        print(f"Loss for {evaluator.name()}: {loss}")

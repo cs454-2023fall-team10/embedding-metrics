@@ -14,6 +14,26 @@ python3 intent.py <chatbot-filename> <output-filename> <num-intents>
 python3 label.py <chatbot-filename> <intent-filename> <num-conversations> <output-filename>
 ```
 
+## Evaluate vector embeddings
+
+1. Activate environment for the embedding models to evaluate.
+2. Uncomment the lines L146-148 for embedding models to evaluate.
+3.
+
+```bash
+python evaluate.py <sample-prompt-filename>
+```
+
+## Evaluate result
+
+| Embedding     | Data: `jobs-homepage` | Data: `lead-homepage` |
+| ------------- | --------------------- | --------------------- |
+| Random        |              882.378  |                       |
+| fasttext      |              815.904  |                       |
+| openai        |                       |                       |
+| pororo        |                       |                       |
+| sentence_bert |                       |                       |
+
 ## Changelog
 
 - 231108: Intent generation, conversation simulation 구현함. gpt3.5 를 활용하는데 퀄리티가 충분히 만족스럽진 않아서 gpt4 를 enable하면 좋겠음. 기본적인 플로우를 작성해서 vector embedding 기반 navigation과 비교할 수 있도록 구성했음. 자잘한 버그를 해결한 후에 수천개 짜리 test case는 이걸로 만들되 수백개 정도의 human-labeled test set도 있으면 좋을 것 같음.
