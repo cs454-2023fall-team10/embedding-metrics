@@ -78,6 +78,30 @@ class SentenceBertEvaluator(Evaluator):
         return util.pytorch_cos_sim(s1_embedding, s2_embedding)[0][0]
 
 
+class OpenAIEvaluator(Evaluator):
+    def __init__(self, model_name):
+        from openai import OpenAI
+        
+        self._client = OpenAI()
+        self.model_name = model_name
+    
+    def name(self):
+        return "OpenAIEvaluator"
+    
+    def similarity(self, s1, s2):
+        response = self._client.embeddings.create(
+            input=[s1, s2],
+            model=self.model_name
+        )
+        
+        s1_embedding = response.data[0].embedding
+        s2_embedding = response.data[1].embedding
+        
+        return np.dot(s1_embedding, s2_embedding) / (
+            np.linalg.norm(s1_embedding) * np.linalg.norm(s2_embedding)
+        )
+
+
 class LabeledData:
     def __init__(self, json):
         self._json = json
@@ -96,6 +120,13 @@ class LabeledData:
 
     def __repr__(self):
         return str(self)
+    
+    def predict(self, evaluator):
+        similarity = [
+            evaluator.safe_similarity(self.intent, choice) for choice in self.choices
+        ]
+        
+        return np.argmax(similarity)
 
     def cross_entropy_loss(self, evaluator, print_details=False):
         similarity = [
@@ -152,14 +183,24 @@ if __name__ == "__main__":
     evaluators = [
         RandomEvaluator(),
         # FastTextEvaluator("./vector_embedding/fasttext/models/cc.ko.300.bin"),
-        PororoEvaluator(),
+        # PororoEvaluator(),
         # SentenceBertEvaluator("jhgan/ko-sroberta-multitask"),
+        OpenAIEvaluator("text-embedding-ada-002")
     ]
 
-    # Calculate loss
+    # Calculate loss and accuracy
     for evaluator in evaluators:
         loss = 0
+        tries = 0
+        correct = 0
         for i, item in enumerate(data):
             loss += item.cross_entropy_loss(evaluator, print_details=i % 10 == 0)
+            tries += 1
+            if item.predict(evaluator) == item.label:
+                correct += 1
+                
+            if i % 10 == 0:
+                print(f"Progress: {i} / {len(data)}")
 
         print(f"Loss for {evaluator.name()}: {loss}")
+        print(f"Accuracy for {evaluator.name()}: {correct / tries}")

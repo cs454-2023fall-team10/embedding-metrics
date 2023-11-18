@@ -24,15 +24,15 @@ python3 label.py <chatbot-filename> <intent-filename> <num-conversations> <outpu
 python evaluate.py <sample-prompt-filename>
 ```
 
-## Evaluate result
+## Evaluate result (Prediction Loss)
 
-| Embedding     | Data: `jobs-homepage` | Data: `lead-homepage` |
-| ------------- | --------------------- | --------------------- |
-| Random        |              882.378  |                       |
-| fasttext      |              815.904  |                       |
-| openai        |                       |                       |
-| pororo        |                       |                       |
-| sentence_bert |                       |                       |
+| Embedding     | Loss (`jobs-homepage`) | Accuracy (`jobs-homepage`) | Loss (`lead-homepage`) | Accuracy (`lead-homepage`) |
+| ------------- | ---------------------- | -------------------------- | ---------------------- | -------------------------- |
+| Random        |               644.532  |                      0.242 |                552.667 |                      0.344 |
+| fasttext      |               649.972  |                      0.278 |                514.598 |                      0.616 | 
+| openai        |                        |                            |                        |                            | 
+| pororo        |               614.527  |                      0.380 |                517.770 |                      0.524 | 
+| sentence_bert |               586.885  |                      0.472 |                489.947 |                      0.730 | 
 
 ## Changelog
 
