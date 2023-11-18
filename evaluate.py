@@ -17,6 +17,14 @@ class Evaluator:
         """
         raise NotImplementedError()
 
+    def safe_similarity(self, s1, s2):
+        value = self.similarity(s1, s2)
+        if value < 0 or value > 1:
+            raise ValueError(
+                f"Similarity value should be between 0 and 1, but {value} is given."
+            )
+        return value
+
 
 class RandomEvaluator(Evaluator):
     def name(self):
@@ -24,6 +32,50 @@ class RandomEvaluator(Evaluator):
 
     def similarity(self, s1, s2):
         return random.random()
+
+
+class FastTextEvaluator(Evaluator):
+    def __init__(self, model_name):
+        from gensim.models import fasttext
+
+        self._model = fasttext.load_facebook_vectors(model_name)
+
+    def name(self):
+        return "FastTextEvaluator"
+
+    def similarity(self, s1, s2):
+        return self._model.wv.n_similarity(s1.split(), s2.split())
+
+
+class PororoEvaluator(Evaluator):
+    def __init__(self):
+        from pororo import Pororo
+
+        self._model = Pororo(task="similarity", lang="ko")
+
+    def name(self):
+        return "PororoEvaluator"
+
+    def similarity(self, s1, s2):
+        return self._model(s1, s2)
+
+
+class SentenceBertEvaluator(Evaluator):
+    def __init__(self, model_name):
+        from sentence_transformers import SentenceTransformer
+
+        self._model = SentenceTransformer(model_name)
+
+    def name(self):
+        return "SentenceBertEvaluator"
+
+    def similarity(self, s1, s2):
+        from sentence_transformers import util
+
+        s1_embedding = self._model.encode(s1)
+        s2_embedding = self._model.encode(s2)
+
+        return util.pytorch_cos_sim(s1_embedding, s2_embedding)[0][0]
 
 
 class LabeledData:
@@ -49,7 +101,7 @@ class LabeledData:
         # Caculate softmax(similarity(intent, choice)) for each choice
         # Then calculate cross entropy loss
         similarity = [
-            evaluator.similarity(self.intent, choice) for choice in self.choices
+            evaluator.safe_similarity(self.intent, choice) for choice in self.choices
         ]
         softmax_similarity = softmax(similarity)
         return -np.log(softmax_similarity[self.label])
@@ -77,11 +129,17 @@ if __name__ == "__main__":
     # Stats for data
     print(f"Total data: {len(data)}")
 
-    evaluator = RandomEvaluator()
+    evaluators = [
+        RandomEvaluator(),
+        FastTextEvaluator("./models/cc.ko.300.bin"),
+        # PororoEvaluator(),
+        # SentenceBertEvaluator("jhgan/ko-sroberta-multitask"),
+    ]
 
     # Calculate cross entropy loss
-    loss = 0
-    for item in data:
-        loss += item.cross_entropy_loss(evaluator)
+    for evaluator in evaluators:
+        loss = 0
+        for item in data:
+            loss += item.cross_entropy_loss(evaluator)
 
-    print(f"Cross entropy loss for {evaluator.name()}: {loss}")
+        print(f"Cross entropy loss for {evaluator.name()}: {loss}")
